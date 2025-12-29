@@ -44,8 +44,9 @@ np_input_data=np.asarray(input_data)
 input_data_reshape=np_input_data.reshape(1,-1) #reshaping the data as we are predicting for one instance
 
 prediction=model.predict(input_data_reshape)
-# print(prediction)
-# if (prediction[0]=='R'):
-#     print('The object is a Rock')
-# else:
-#     print('The object is a Mine')
+print(prediction)
+if (prediction[0]=='R'):
+    print('The object is a Rock')
+else:
+
+    print('The object is a Mine')
