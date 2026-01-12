@@ -41,7 +41,7 @@ training_data_accuracy=accuracy_score(data_train_prediction,labels_train)
  
 data_test_prediction=classifier.predict(data_test)
 test_data_accuracy=accuracy_score(data_test_prediction,labels_test)
-# print('Accuracy score on test data : ', test_data_accuracy)
+print('Accuracy score on test data : ', test_data_accuracy)
 
 # Predictive system
 input_data=(5,166,72,19,175,25.8,0.587,51)
