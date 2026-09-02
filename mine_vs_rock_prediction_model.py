@@ -14,7 +14,7 @@ sonar_data=pd.read_csv(data_path+'sonar_data.csv',header=None) #this means there
 sonar_data.groupby(60).mean() #to see the mean of each column based on the labels on the 60th column
 
 #/////////////Preparing the data//////////////////////
-X=sonar_data.drop(columns=60,axis=1) #dropping the 60th column(1) for row its 0
+X=sonar_data.drop(columns=60,axis=1) #dropping the 60th column(1 is mentioned since its a column) for row its 0
 Y=sonar_data[60]
 #splitting  into training and test data
 
