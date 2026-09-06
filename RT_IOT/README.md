@@ -57,7 +57,7 @@ while analysin the data using the command *data.nunique().sort_values()* i notic
 
 
 
-Continuing my investigation on the features of this dataset, i tried to evaluate the relationship between potentially interesting features and the "Attack_type". So i ran the following code:
+Continuing my investigation on the features of this dataset, i tried to evaluate the relationship between potentially interesting categorical features and the "Attack_type". So i ran the following code:
 ----------------------------------------------------------------------------
 print(pd.crosstab(data["proto"], data["Attack_type"], normalize="index"))
 print(pd.crosstab(data["service"], data["Attack_type"], normalize="index"))
@@ -85,6 +85,53 @@ From this, i had the following observation;
 In conclusion to this, proto and service show strong associations with Attack_type, making them potentially valuable predictive features. However, strong association alone does not prove target leakage.
 
 
+Moving to numerical features, I wanted to understand how each features varied with each Attack_type. I started with the "flow_duration" and "fwd_pkts_tot" and "bwd_pkts_tot"
+
+-------------------------------------------------------------
+print(data.groupby('Attack_type')['flow_duration'].mean())
+print(data.groupby('Attack_type')['fwd_pkts_tot'].mean())
+---------------------------------------------------------------
+
+
+the ouput showed that:  - Wipro_buld attacks have mean largly diffrent from that of other attacks accross these 3 features.
+                        - Different attack types generate substantially different numbers of forward packets, making *fwd_pkts_tot* potentially useful for distinguishing attack types.
+
+ i proceeded by running *print(data.groupby('Attack_type')['fwd_pkts_tot'].describe())* which gives some informations on *fwd_pkts_tot*  for each attack type. the out put:
+
+ -----------------------------------------------------------------------------------------------
+                               count       mean         std  min   25%   50%    75%     max
+Attack_type                                                                               
+ARP_poisioning               7750.0   8.296903   40.537051  0.0   1.0   2.0   6.00  2166.0
+DDOS_Slowloris                534.0   6.041199    1.642022  1.0   4.0   6.0   7.75    11.0
+DOS_SYN_Hping               94659.0   1.000000    0.000000  1.0   1.0   1.0   1.00     1.0
+MQTT_Publish                 4146.0  10.171973   25.851223  1.0   9.0  10.0  10.00  1661.0
+Metasploit_Brute_Force_SSH     37.0  12.216216    6.320756  1.0  14.0  14.0  15.00    33.0
+NMAP_FIN_SCAN                  28.0   1.214286    0.956736  1.0   1.0   1.0   1.00     6.0
+NMAP_OS_DETECTION            2000.0   1.000000    0.000000  1.0   1.0   1.0   1.00     1.0
+NMAP_TCP_scan                1002.0   1.009980    0.140998  1.0   1.0   1.0   1.00     3.0
+NMAP_UDP_SCAN                2590.0   2.069884   24.809871  0.0   1.0   1.0   1.00   903.0
+NMAP_XMAS_TREE_SCAN          2010.0   1.003483    0.135665  1.0   1.0   1.0   1.00     7.0
+Thing_Speak                  8108.0   5.392452    5.099881  0.0   2.0   2.0   7.00   130.0
+Wipro_bulb                    253.0  80.529644  407.144582  0.0   1.0  10.0  16.00  4345.0
+-----------------------------------------------------------------------------------------------------
+
+ From this we can see that, fwd_pkts_tot varies substantially across some attack types, while several attack types have similar distributions. Therefore, the feature may be useful for distinguishing certain classes, but it is unlikely to be sufficient on its own for multiclass classification.
+
+
+ After analysing the data, it time to prepare it before train the models
+  fist thing to do was to drop the useless columns; "Unnamed: 0" and "bwd_URG_flag_count", then separate the taregt label form the features . Which leaves a total of 81 features to fit the models.
+
+I then encoded the categorical data such that they can be fitted to machine learning classifiers as numerical values. the two columns( proto and service) containing the categorical data after encoding produced the new columns; *'proto_icmp', 'proto_tcp', 'proto_udp', 'service_-', 'service_dhcp', 'service_dns', 'service_http', 'service_irc', 'service_mqtt', 'service_ntp', 'service_radius', 'service_ssh', 'service_ssl'*
+
+Here is how i proceeded with the different models
+
+*Logic regression*
+
+ I had to start by standardizing the data for every features. Why? Because the features operate on very different scales. Without standardization, a feature with large numerical values can disproportionately influence Logistic Regression.
+
+ But the standardization had to be done only on the features which did not go throught the encoding phase. So i jad to drop those encoded features, standardize the rest which made them into numpy arrays, transform it back to Dataframes and concatenate back with the encoded features to recreate the training and test data.
+
+ 
 
 
 
