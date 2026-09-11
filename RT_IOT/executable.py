@@ -4,9 +4,9 @@ import pandas as pd
 data=pd.read_csv('./Datasets/RT_IOT2022')
 
 # print(data.head())
-print('data columns: \n',data.columns)
+# print('data columns: \n',data.columns)
 
-# print('Info: \n',data.info())
+print('Info: \n',data.info())
 
 # print('Describe: \n',data.describe())  
       
@@ -54,10 +54,10 @@ print('data columns: \n',data.columns)
 # print(data.groupby("Attack_type")["bwd_pkts_tot"].mean())
 
 # print(data.groupby('Attack_type')['fwd_pkts_tot'].describe())
-import seaborn as sns
-import matplotlib.pyplot as plt
+# import seaborn as sns
+# import matplotlib.pyplot as plt
 
-plt.figure(figsize=(12, 6))
-sns.boxplot(data=data, x="Attack_type", y="fwd_pkts_tot")
-plt.xticks(rotation=90)
-plt.show()
+# plt.figure(figsize=(12, 6))
+# sns.boxplot(data=data, x="Attack_type", y="fwd_pkts_tot")
+# plt.xticks(rotation=90)
+# plt.show()

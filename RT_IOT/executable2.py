@@ -6,6 +6,9 @@ from sklearn.metrics import accuracy_score
 from sklearn.metrics import classification_report,confusion_matrix, f1_score
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import ConfusionMatrixDisplay
+import matplotlib.pyplot as plt
+
 
 data=pd.read_csv('./Datasets/RT_IOT2022')
 polished_data=data.drop(['Unnamed: 0', 'bwd_URG_flag_count'],axis=1)
@@ -129,13 +132,13 @@ F1=f1_score(testY, rf_predictions, average='macro')
 Confusion_matrix=confusion_matrix(testY, rf_predictions)
 
 
-print("Random Forest Results:")
-print(f"Accuracy: {Accuracy_score}")
-print(f"F1 Score: {F1}")
-print("Classification Report:")
-print(Classification_report)
-print("Confusion Matrix:")
-print(Confusion_matrix)
+# print("Random Forest Results:")
+# print(f"Accuracy: {Accuracy_score}")
+# print(f"F1 Score: {F1}")
+# print("Classification Report:")
+# print(Classification_report)
+# print("Confusion Matrix:")
+# print(Confusion_matrix)
 
 from sklearn.model_selection import GridSearchCV
 
@@ -146,9 +149,9 @@ rf_for_tuning = RandomForestClassifier(
 
 param_grid = {
     'n_estimators': [100, 200],
-    'max_depth': [None, 20, 40],
-    'min_samples_split': [2, 5],
-    'min_samples_leaf': [1, 2]
+    'max_depth': [None, 20]
+    # 'min_samples_split': [2, 5],
+    # 'min_samples_leaf': [1, 2]
 }
 
 grid_search= GridSearchCV(
@@ -159,3 +162,49 @@ grid_search= GridSearchCV(
   n_jobs=-1, 
   verbose=2 #display progresss
 )
+
+grid_search.fit(trainX, trainY)
+
+# print("Best parameters:", grid_search.best_params_)
+# print("Best cross-validated macro F1:", grid_search.best_score_)
+
+best_rf = grid_search.best_estimator_
+
+tuned_predictions=best_rf.predict(testX)
+
+# print("Accuracy:", accuracy_score(testY, tuned_predictions))
+# print("Macro F1:", f1_score(testY, tuned_predictions, average='macro'))
+# print("Weighted F1:", f1_score(testY, tuned_predictions, average='weighted'))
+# print(classification_report(testY, tuned_predictions))
+
+
+ConfusionMatrixDisplay.from_predictions(
+    testY,
+    tuned_predictions,
+    xticks_rotation=90,
+    cmap="Blues"
+)
+
+plt.title("Random Forest Confusion Matrix")
+plt.tight_layout()
+plt.show()
+
+importance_df=pd.DataFrame({
+    'feature': testX.columns,
+    'importance': best_rf.feature_importances_
+})
+
+importance_df=importance_df.sort_values(by='importance', ascending=False)
+print("Top 20 important features: \n", importance_df.head(20))
+
+importance_df.head(20).sort_values("importance").plot.barh(x="feature", y="importance", legend=False, figsize=(10, 8))
+
+plt.title("Top 20 Random Forest Features")
+plt.xlabel("Importance")
+plt.tight_layout()
+plt.show()
+
+
+#Save model.
+import joblib
+joblib.dump(best_rf, 'random_forest_attack_predictor.pkl')

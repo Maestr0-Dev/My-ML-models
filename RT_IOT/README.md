@@ -1,406 +1,566 @@
+# Real-Time Network Attack Detection Using Machine Learning
 
-*Project: Real-Time Network Attack Detection*
-objective of the project:
------
------
-                                            **PROCESS**
-The dataset documentation on ___ said there are no missing values but i still needed to verify. 
-i ran *data.pd.isnull().sum()* , and with no surprise, the data was ok with no missing values.
+## 1. Introduction
 
-i started by bringing out the list of all the features in the dataset and based on their characteristics, bring out which ones will be used as target when trainign the machine learning models.
- From this, the target column is the 'Attack_type' column.
+For my first machine learning project, I decided to work on network security. The goal was to use machine learning to classify network traffic into different traffic or attack categories.
 
-Now i have to evaluate which columns are categorical.
- ____
- ____
- 
-after runnig *print(data['Attack_type'].value_counts(normalize=True))* i noticed an enormose imbalance in the dataset. "DOS_SYN_Hiping"attacks alone constitutes roughly 77% of the dataset, while ___ constitues about 0.02% of the dataset. 
--------------------------------------------
-       Attack_type                          |
-DOS_SYN_Hping                 0.768854      |
-Thing_Speak                   0.065856      |
-ARP_poisioning                0.062948      |
-MQTT_Publish                  0.033675      |
-NMAP_UDP_SCAN                 0.021037
-NMAP_XMAS_TREE_SCAN           0.016326
-NMAP_OS_DETECTION             0.016245
-NMAP_TCP_scan                 0.008139
-DDOS_Slowloris                0.004337
-Wipro_bulb                    0.002055
-Metasploit_Brute_Force_SSH    0.000301
-NMAP_FIN_SCAN                 0.000227
-Name: proportion, dtype: float64 
---------------------------------------------
+I used the RT-IoT2022 dataset from the UCI Machine Learning Repository. The dataset contains network traffic collected from IoT devices and includes different types of normal and malicious traffic.
 
-    This could cause the future models to have a high accuracy score meanwhile it actually failed at predicting several types of attacks and could only predict 'DOS_SYN_Hiping'.
-
-
-while analysin the data using the command *data.nunique().sort_values()* i noticed some interesting characteristics about some columns.
-    1. *bwd_URG_flag_count* : this column has only one values through out all the 123117 records. this is a signal that the column will may not be used durring the classification phase, since it does not provides any distinction between classes. To find similar columns, i ran the following code in otehr to verify if there's any other column with 1 value:
-
-    ---------------------------------------------------
-    unique_columns=data.columns[data.nunique() == 1]
-    print(unique_columns)
-    ---------------------------------------------------
-
-    The output showed that this is the only columns with single value.
-
-    2. Unnamed: 0" : his column initially appeared to be an index because its first values corresponded to the dataframe index. However, further inspection showed that the values do not continue sequentially throughout the dataset. I also found from the code below that the value 0 occurs 12 times, while other values are repeated, suggesting that the column follows a recurring sequence rather than representing a unique identifier. 
-    
-    --------------------------------------------------------
-    zero_count=data['Unnamed: 0'].value_counts().get(0,0)
-    print("Count of zeros in 'Unnamed: 0':", zero_count)
-    --------------------------------------------------------
-
-    The ouput was 12. This means that there is a total of 12 sequences, where each starts with a 0 to a certain integer X. I did not take time to find the X because i already had the answer to my question (Is "Unnamed: 0" a necessary column which can be used during classification? No)
-
-    Since this column does not appear to represent an intrinsic characteristic of the network traffic, I consider it unsuitable as a predictive feature and will exclude it from the classification stage.
-
-
-
-Continuing my investigation on the features of this dataset, i tried to evaluate the relationship between potentially interesting categorical features and the "Attack_type". So i ran the following code:
-
-----------------------------------------------------------------------------
-print(pd.crosstab(data["proto"], data["Attack_type"], normalize="index"))
-print(pd.crosstab(data["service"], data["Attack_type"], normalize="index"))
-----------------------------------------------------------------------------
-
-From the out put, i noticed a strong relationship between the features. For example;
-    On the Proto X Attack_type table, i noticed that *85.7% of all TCPs observations where DOS_SYN_Hping*and on the service X Attack_type table, *100% of all IRCs where Wipro_bulb*. such high.
-    Other examples: 
-    -78.9% of observations where protocol= "icmp" are classified as Thing_speak
-    -76.9% of observations where service="http" are Thing_speak
-
-Such highly predictive information lead me to think that these features (proto and service) could create a *Leakage*
-
-To have a better eye on this, I switche the point of view. Instead of finding what attack occurs given protocol/service, i found what protocol/service occurs given the Attack_type.
-
-----------------------------------------------------------------------------
-print(pd.crosstab(data["Attack_type"], data["proto"], normalize="index"))
-print(pd.crosstab(data["Attack_type"], data["service"], normalize="index"))
-----------------------------------------------------------------------------
-
-From this, i had the following observation;
-- 99.6% of MQT_PUBLISH attacks use mqt sevrice
-- 100% of NMAP_OS_DETECTION attacks use tcp protocol
-
-In conclusion to this, proto and service show strong associations with Attack_type, making them potentially valuable predictive features. However, strong association alone does not prove target leakage.
-
-
-Moving to numerical features, I wanted to understand how each features varied with each Attack_type. I started with the "flow_duration" and "fwd_pkts_tot" and "bwd_pkts_tot"
-
--------------------------------------------------------------
-print(data.groupby('Attack_type')['flow_duration'].mean())
-print(data.groupby('Attack_type')['fwd_pkts_tot'].mean())
----------------------------------------------------------------
-
-
-the ouput showed that:  - Wipro_buld attacks have mean largly diffrent from that of other attacks accross these 3 features.
-                        - Different attack types generate substantially different numbers of forward packets, making *fwd_pkts_tot* potentially useful for distinguishing attack types.
-
- i proceeded by running *print(data.groupby('Attack_type')['fwd_pkts_tot'].describe())* which gives some informations on *fwd_pkts_tot*  for each attack type. the out put:
-
- -----------------------------------------------------------------------------------------------
-                               count       mean         std  min   25%   50%    75%     max
-Attack_type                                                                               
-ARP_poisioning               7750.0   8.296903   40.537051  0.0   1.0   2.0   6.00  2166.0
-DDOS_Slowloris                534.0   6.041199    1.642022  1.0   4.0   6.0   7.75    11.0
-DOS_SYN_Hping               94659.0   1.000000    0.000000  1.0   1.0   1.0   1.00     1.0
-MQTT_Publish                 4146.0  10.171973   25.851223  1.0   9.0  10.0  10.00  1661.0
-Metasploit_Brute_Force_SSH     37.0  12.216216    6.320756  1.0  14.0  14.0  15.00    33.0
-NMAP_FIN_SCAN                  28.0   1.214286    0.956736  1.0   1.0   1.0   1.00     6.0
-NMAP_OS_DETECTION            2000.0   1.000000    0.000000  1.0   1.0   1.0   1.00     1.0
-NMAP_TCP_scan                1002.0   1.009980    0.140998  1.0   1.0   1.0   1.00     3.0
-NMAP_UDP_SCAN                2590.0   2.069884   24.809871  0.0   1.0   1.0   1.00   903.0
-NMAP_XMAS_TREE_SCAN          2010.0   1.003483    0.135665  1.0   1.0   1.0   1.00     7.0
-Thing_Speak                  8108.0   5.392452    5.099881  0.0   2.0   2.0   7.00   130.0
-Wipro_bulb                    253.0  80.529644  407.144582  0.0   1.0  10.0  16.00  4345.0
------------------------------------------------------------------------------------------------------
-
- From this we can see that, fwd_pkts_tot varies substantially across some attack types, while several attack types have similar distributions. Therefore, the feature may be useful for distinguishing certain classes, but it is unlikely to be sufficient on its own for multiclass classification.
-
-
- After analysing the data, it time to prepare it before train the models
-  fist thing to do was to drop the useless columns; "Unnamed: 0" and "bwd_URG_flag_count", then separate the taregt label form the features . Which leaves a total of 81 features to fit the models.
-
-I then encoded the categorical data such that they can be fitted to machine learning classifiers as numerical values. the two columns( proto and service) containing the categorical data after encoding produced the new columns; *'proto_icmp', 'proto_tcp', 'proto_udp', 'service_-', 'service_dhcp', 'service_dns', 'service_http', 'service_irc', 'service_mqtt', 'service_ntp', 'service_radius', 'service_ssh', 'service_ssl'*
-
-Here is how i proceded with the different models
-
-**MODEL TRAINING ,TESTING AND SELECTION**
-
-*1. Logic regression*
-
- I had to start by standardizing the data for every features. Why? Because the features operate on very different scales. Without standardization, a feature with large numerical values can disproportionately influence Logistic Regression.
-
- But the standardization had to be done only on the features which did not go throught the encoding phase. So i had to drop those encoded features, standardize the rest which made them into numpy arrays, transform it back to Dataframes and concatenate back with the encoded features to recreate the training and test data.
-
-Then came the implementation of the Logistic Regression model;
+The main target variable is `Attack_type`.
 
 -----------------------------------------
-*model=LogicRegressor()*
-*model.fit(trainX,trainY)*
 
-*predictions=model.predict(testX)*
+# 2. Objective of the Project
+
+The objective of this project is to build a machine learning model that can classify network traffic into its corresponding `Attack_type` using features extracted from IoT network traffic.
+
+I also wanted to:
+
+* understand the dataset before training a model
+* compare different classification algorithms
+* see how class imbalance affects the results
+* tune the best-performing model
+* identify which features were most useful for the final model
+* save the final model so it can be used later for predictions
+
+-------------
+
+# 3. Dataset
+
+I used the RT-IoT2022 dataset from the UCI Machine Learning Repository.
+Dataset source:
+[https://archive.ics.uci.edu/dataset/942/rt-iot2022](https://archive.ics.uci.edu/dataset/942/rt-iot2022)
+
+The dataset contains:
+* 123,117 rows
+* 85 columns in the CSV file
+* network traffic features extracted from IoT network traffic
+* the target variable `Attack_type`
+
+The target contains 12 classes in the version of the dataset I used:
+
+1. `ARP_poisioning`
+2. `DDOS_Slowloris`
+3. `DOS_SYN_Hping`
+4. `MQTT_Publish`
+5. `Metasploit_Brute_Force_SSH`
+6. `NMAP_FIN_SCAN`
+7. `NMAP_OS_DETECTION`
+8. `NMAP_TCP_scan`
+9. `NMAP_UDP_SCAN`
+10. `NMAP_XMAS_TREE_SCAN`
+11. `Thing_Speak`
+12. `Wipro_bulb`
+
+The classes are highly imbalanced. For example, `DOS_SYN_Hping` represents about 76.9% of the dataset, while `Metasploit_Brute_Force_SSH` represents only about 0.03%.
+This became important later when evaluating the models.
+
+------------------------------
+
+# 4. Initial Data Inspection
+
+I first loaded the dataset and checked its general structure.
+
+data = pd.read_csv('./Datasets/RT_IOT2022')
+
+print(data.shape)
+print(data.head())
+print(data.info())
+
+The dataset contained 123,117 observations and 85 columns.
+I also checked for missing values:
+
+data.isnull().sum()
+
+There were no missing values that needed to be handled.
+
+-____________________________________________
+
+# 5. Checking the Features
+I cheked the number of unique values in each column:
+
+data.nunique().sort_values()
+
+This helped me identify columns with very few unique values.
+One of the columns, `bwd_URG_flag_count`, had only one unique value across the entire dataset. Since it had the same value for every observation, it could not provide useful information for classification.
+There was also an `Unnamed: 0` column, which appeared to be an index-like column rather than a meaningful network feature.
+
+I therefore removed both:
+______________________________________________
+polished_data = data.drop(
+    ['Unnamed: 0', 'bwd_URG_flag_count'],
+    axis=1
+)
+_________________________________________________
+
+I did not want the model to learn from an artificial index or a constant feature.
+
+-----------------------------------------------------
+
+# 6. Investigating the Target Classes
+
+I checked the distribution of `Attack_type` because I expected the classes to be imbalanced.
+
+data['Attack_type'].value_counts()
+
+The largest class was `DOS_SYN_Hping`
+with approximately 76.9% of all observations.
+Some classes had very few observations, especially:
+
+* `Metasploit_Brute_Force_SSH`
+* `NMAP_FIN_SCAN`
+* `Wipro_bulb`
+
+This meant that accuracy alone would not be enough to evaluate the models. A model could achieve high accuracy simply by performing very well on the largest class.
+
+For this reason, I focused particularly on Macro F1, which gives each class equal importance.
+
+--------------------------------------------
+
+# 7. Investigating Categorical Features
+
+Two columns were categorical:
+
+* `proto`
+* `service`
+
+I examined their relationship with `Attack_type`.
+For example, some services and protocols were strongly associated with certain classes.
+
+Some observations included:
+
+* most `MQTT_Publish` traffic used the MQTT service
+* `Wipro_bulb` was strongly associated with IRC traffic
+* `Thing_Speak` had strong associations with ICMP and HTTP
+* `NMAP_OS_DETECTION` was strongly associated with TCP
+
+At first, I considered whether these relationships could represent target leakage.
+
+However, strong association by itself does not mean leakage. These are actual network traffic characteristics that would be available when classifying a network flow.
+Therefore, I kept `proto` and `service` as features.
+
+------------------------------------
+
+# 8. Exploring Numerical Features
+
+I also investigated numerical features to understand whether different traffic categories had different patterns.
+
+One feature I looked at was:
+
+`fwd_pkts_tot`
+
+I compared its statistics across the different classes.
+
+For example:
+
+* `DOS_SYN_Hping` had a mean of approximately 1 forward packet
+* `MQTT_Publish` had a mean of approximately 10.17
+* `Wipro_bulb` had a much higher mean of approximately 80.53
+* `Thing_Speak` had a mean of approximately 5.39
+
+This suggested that packet-related features could contain useful information for distinguishing between traffic categories.
+
+I also investigated features such as:
+
+* `flow_duration`
+* packet counts
+* payload statistics
+* inter-arrival times
+
+---------------------
+
+# 9. Preparing the Data
+
+I separated the input features from the target:
+_________________________________________________
+X = polished_data.drop(['Attack_type'], axis=1)
+y = polished_data['Attack_type']
+_______________________________________________
+
+
+Since `proto` and `service` were categorical, I converted them into numerical features using one-hot encoding:
+__________________________________________
+X = pd.get_dummies(
+    X,
+    columns=["proto", "service"],
+    dtype=int
+)
+__________________________________________
+
+I then divided the data into training and testing sets.
+__________________________________________________
+trainX, testX, trainY, testY = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+__________________________________________________________
+
+I used an 80/20 split.
+
+I also used `stratify=y` so that the class distribution would be maintained approximately in both sets.
+
 ------------------------------------------
 
-But i could not just stay at prediction, i had to evaluate the models throught differnt methods;
-accuracy score, confussion metrix, F1 and classification report.
+# 10. Logistic Regression
 
--------------------------------------------------------------------
-*Accuracy_score=[accuracy_score(testY, predictions)]*
-*Classification_report=[classification_report(testY, predictions)]*
-*F1=[f1_score(testY, predictions, average='weighted')]*
-*Confusion_matrix=[confusion_matrix(testY, predictions)]*
+I started with Logistic Regression as a baseline model.
+Because Logistic Regression is sensitive to feature scale, I standardized the numerical features using `StandardScaler`.
 
----------------------------------------------------------------------
+I did not standardize the one-hot encoded categorical variables.
 
-i had the following results:
-Logistic Regression Results:
-Accuracy: 0.9913905133203379
-F1 Score: 0.9912696193237263
-Classification Report:
-                            precision    recall  f1-score   support
+The model achieved approximately:
 
-            ARP_poisioning       0.95      0.94      0.95      1550
-            DDOS_Slowloris       0.98      0.80      0.88       107
-             DOS_SYN_Hping       1.00      1.00      1.00     18932
-              MQTT_Publish       1.00      1.00      1.00       829
-Metasploit_Brute_Force_SSH       0.86      0.86      0.86         7
-             NMAP_FIN_SCAN       0.71      0.83      0.77         6
-         NMAP_OS_DETECTION       0.99      1.00      1.00       400
-             NMAP_TCP_scan       1.00      1.00      1.00       200
-             NMAP_UDP_SCAN       0.96      0.98      0.97       518
-       NMAP_XMAS_TREE_SCAN       1.00      1.00      1.00       402
-               Thing_Speak       0.94      0.96      0.95      1622
-                Wipro_bulb       0.94      0.59      0.72        51
+* Accuracy: 99.14%
+* Macro F1: 0.92
+* Weighted F1: 0.99
 
-                  accuracy                           0.99     24624
-                 macro avg       0.94      0.91      0.92     24624
-              weighted avg       0.99      0.99      0.99     24624
+Although the overall accuracy was high, performance was weaker on some minority classes.
 
-Confusion Matrix:
-[[ 1456     1     0     4     0     0     0     1     0     0    87     1]
- [    1    86     0     0     0     0     0     0    20     0     0     0]
- [    0     0 18932     0     0     0     0     0     0     0     0     0]
- [    2     0     0   827     0     0     0     0     0     0     0     0]
- [    1     0     0     0     6     0     0     0     0     0     0     0]
- [    1     0     0     0     0     5     0     0     0     0     0     0]
- [    0     0     0     0     0     0   400     0     0     0     0     0]
- [    0     0     0     0     0     0     0   200     0     0     0     0]
- [    7     1     0     0     0     0     0     0   509     0     1     0]
- [    2     0     0     0     0     0     0     0     0   400     0     0]
- [   55     0     0     0     1     1     0     0     3     0  1561     1]
- [    1     0     0     0     0     1     3     0     0     0    16    30]]
+For example:
 
+* `DDOS_Slowloris`: F1 ≈ 0.88
+* `Wipro_bulb`: F1 ≈ 0.72
+* `NMAP_FIN_SCAN`: F1 ≈ 0.77
+* `Metasploit_Brute_Force_SSH`: F1 ≈ 0.86
 
+This showed why looking only at accuracy would be misleading.
 
-From these measurements, 
->>>F1 macro=0.92, signifying that the model performs pretty overall well but classes remain more difficult to detect than others.
+---
 
->>> Wipro_bulb Recall = 0.59; That means the model correctly detects only about 59% of actual Wipro_bulb attacks.
-There are 51 Wipro_bulb examples:
-30 correctly identified
-16 classified as Thing_Speak
-3 classified as NMAP_OS_DETECTION
-1 as ARP_poisioning
-1 as NMAP_FIN_SCAN
+# 11. Decision Tree
 
-So the model is particularly confusing Wipro_bulb and Thing_Speak
+I then tested a Decision Tree Classifier.
 
->>>DDOS_Slowloris is another weakness. There are 107 actual examples but the model correctly identifies 86 / 107
-But 20 are classified as NMAP_UDP_SCAN. So the model is confused between NMAP_UDP_SCAN and DDOS_Slowloris.
+DecisionTreeClassifier()
 
->>>Classes such as NMAP_FIN_SCAN and Metasploit_Brute_Force_SSH contain  way too litle samples to be a ble to draw confident conclusions
+The results were:
 
->>> the 99.1% accuracy combined with 92% macro F1 tells us that The model isn't just exploiting the majority class. It is genuinely performing well across most classes, but there are some minority-class weaknesses.
+* Accuracy: 99.79%
+* Macro F1: 0.969
 
-*conclusions for the logistic regression model*
-The Logistic Regression achieved 99.14% accuracy and a macro F1-score of 0.92. Performance was excellent for most attack classes, with perfect classification for several NMAP and traffic categories. However, Wipro_bulb and DDOS_Slowloris showed lower recall, primarily due to confusion with Thing_Speak and NMAP_UDP_SCAN respectively. Extremely rare classes such as NMAP_FIN_SCAN and Metasploit_Brute_Force_SSH contain too few test samples for reliable performance assessment.
+The Decision Tree performed better than Logistic Regression.
+In particular, performance on some of the more difficult classes improved.
 
+For example, `Wipro_bulb` recall increased from about 0.59 with Logistic Regression to about 0.82 with the Decision Tree.
+This suggested that nonlinear relationships between the features were useful for this dataset.
 
-*2. Decision Tree*
+---
 
-Decision Tree Results:
-Accuracy: 0.9979694606887589
-F1 Score: 0.9688486346839085
-Classification Report:
-                            precision    recall  f1-score   support
+# 12. Random Forest
 
-            ARP_poisioning       0.99      0.99      0.99      1550
-            DDOS_Slowloris       0.99      1.00      1.00       107
-             DOS_SYN_Hping       1.00      1.00      1.00     18932
-              MQTT_Publish       1.00      1.00      1.00       829
-Metasploit_Brute_Force_SSH       0.78      1.00      0.88         7
-             NMAP_FIN_SCAN       1.00      0.83      0.91         6
-         NMAP_OS_DETECTION       1.00      1.00      1.00       400
-             NMAP_TCP_scan       1.00      1.00      1.00       200
-             NMAP_UDP_SCAN       0.99      0.99      0.99       518
-       NMAP_XMAS_TREE_SCAN       1.00      1.00      1.00       402
-               Thing_Speak       0.99      0.99      0.99      1622
-                Wipro_bulb       0.95      0.82      0.88        51
+I then tested a Random Forest Classifier.My initial Random Forest used 100 trees.
+The results were:
 
-                  accuracy                           1.00     24624
-                 macro avg       0.97      0.97      0.97     24624
-              weighted avg       1.00      1.00      1.00     24624
+* Accuracy: 99.85%
+* Macro F1: 0.977
 
-Confusion Matrix:
-[[ 1533     0     0     0     1     0     0     0     2     0    14     0]
- [    0   107     0     0     0     0     0     0     0     0     0     0]
- [    0     0 18932     0     0     0     0     0     0     0     0     0]
- [    1     1     0   827     0     0     0     0     0     0     0     0]
- [    0     0     0     0     7     0     0     0     0     0     0     0]
- [    0     0     0     0     0     5     0     0     0     1     0     0]
- [    0     0     0     0     0     0   400     0     0     0     0     0]
- [    0     0     0     0     0     0     0   200     0     0     0     0]
- [    1     0     0     0     1     0     0     0   514     0     1     1]
- [    0     0     0     0     0     0     0     0     2   400     0     0]
- [   12     0     0     0     0     0     1     0     1     0  1607     1]
- [    0     0     0     2     0     0     0     0     0     0     7    42]]
+This was the strongest baseline model.
+The Random Forest performed very well across most classes, including the minority classes.
+
+However, some classes still had very small test support. For example:
+
+* `Metasploit_Brute_Force_SSH`: 7 test samples
+* `NMAP_FIN_SCAN`: 6 test samples
+
+Therefore, the performance numbers for these classes should not be treated as highly reliable conclusions.
+
+---
+
+# 13. Model Comparison
+
+The three initial models gave the following results:
+
+| Model               | Accuracy | Macro F1 | Weighted F1 |
+| ------------------- | -------: | -------: | ----------: |
+| Logistic Regression |   99.14% |     0.92 |        0.99 |
+| Decision Tree       |   99.79% |    0.969 |       ~1.00 |
+| Random Forest       |   99.85% |    0.977 |       ~1.00 |
+
+Random Forest was the best of the three based on Macro F1 and accuracy.
+I therefore continued with Random Forest.
+
+-----------------------------------------------
+
+# 14. Cross-Validation
+
+Since a single train/test split can sometimes give misleading results, I also used 5-fold stratified cross-validation.
+________________________________________________
+cv = StratifiedKFold(
+    n_splits=5,
+    shuffle=True,
+    random_state=42
+)
+
+cv_scores = cross_val_score(
+    rf_model,
+    trainX,
+    trainY,
+    cv=cv,
+    scoring='f1_macro'
+)
+_________________________________________________
 
 
-This model performed arguiaby better than the logistic regression model.
-with and accuracy score : 99.79%
->>>F1 macro: 0.96 , has significantly increased from that of the logistic regression model;0.92. signaling an improvement
+The Macro F1 scores across the folds were approximately:
 
->>> Wipro_bulb has recall=0.82, which is a big improvement form the 0.59 of the logistic regression model.
-45 correctly identified,
-4 classified as Thing_Speak, 
-2 classified as MQTT_Publish
-the model has little difficulties distinguishing between Wipro and classified.
->>>ARP_poisioning went from F1: 0.95 to 0.99
->>>Thing_Speak F1: 0.95 to 0.99
+0.96497
+0.96865
+0.96093
+0.96707
+0.96592
 
-So the tree is clearly capturing nonlinear relationships that Logistic Regression wasn't capturing as well.
+The mean was: 0.96551
 
-form the result, it is clear that *Wipro_bulb* is the most challenging class to predict.
-Lets see what the Random Forrest classifier shows.
+The results were relatively close across the five folds, suggesting that the model's performance was reasonably consistent across different subsets of the training data.
 
-*3. Random Forrest*
-Random Forest Results:
-Accuracy: 0.9985380116959064
-F1 Score: 0.9768259740066153
-Classification Report:
-                            precision    recall  f1-score   support
+However, cross-validation does not prove that there is no leakage or bias in the dataset.
 
-            ARP_poisioning       0.99      0.99      0.99      1550
-            DDOS_Slowloris       1.00      0.99      1.00       107
-             DOS_SYN_Hping       1.00      1.00      1.00     18932
-              MQTT_Publish       1.00      1.00      1.00       829
-Metasploit_Brute_Force_SSH       0.78      1.00      0.88         7
-             NMAP_FIN_SCAN       1.00      0.83      0.91         6
-         NMAP_OS_DETECTION       1.00      1.00      1.00       400
-             NMAP_TCP_scan       1.00      1.00      1.00       200
-             NMAP_UDP_SCAN       0.99      0.99      0.99       518
-       NMAP_XMAS_TREE_SCAN       1.00      1.00      1.00       402
-               Thing_Speak       0.99      0.99      0.99      1622
-                Wipro_bulb       0.98      0.96      0.97        51
+--------------------------------------------------
 
-                  accuracy                           1.00     24624
-                 macro avg       0.98      0.98      0.98     24624
-              weighted avg       1.00      1.00      1.00     24624
+# 15. Testing Class Weighting
+Because the dataset was highly imbalanced, I also tested a class-weighted Random Forest.
 
-Confusion Matrix:
-[[ 1540     0     0     0     1     0     0     0     0     0     9     0]
- [    0   106     0     0     0     0     0     0     1     0     0     0]
- [    0     0 18932     0     0     0     0     0     0     0     0     0]
- [    2     0     0   827     0     0     0     0     0     0     0     0]
- [    0     0     0     0     7     0     0     0     0     0     0     0]
- [    0     0     0     0     0     5     0     0     0     1     0     0]
- [    0     0     0     0     0     0   400     0     0     0     0     0]
- [    0     0     0     0     0     0     0   200     0     0     0     0]
- [    2     0     0     0     1     0     0     0   515     0     0     0]
- [    1     0     0     0     0     0     0     0     1   400     0     0]
- [   13     0     0     0     0     0     0     0     1     0  1607     1]
- [    1     0     0     0     0     0     0     0     0     0     1    49]]
+rf_model = RandomForestClassifier(
+    n_estimators=100,
+    class_weight='balanced',
+    random_state=42
+)
 
+The results were:
 
-This is the stronggest of all so far.
+* Accuracy: 99.83%
+* Macro F1: 0.975
+This was slightly worse than the original Random Forest.
+Therefore, using `class_weight='balanced'` did not improve the model in this experiment.
 
+I decided to keep the normal Random Forest.
 
-| Model               |   Accuracy | Macro F1 | Weighted F1 |
-| ------------------- | ---------: | ---------| ----------- |
-| Logistic Regression |     99.14% |     0.92 |        0.99 |
-| Decision Tree       |     99.79% |    0.96 |        1.00 |
-| **Random Forest**   | **99.85%** | **0.97** |    **1.00** |
+---=-------------------------------
 
+# 16. Hyperparameter Tuning
 
-The improvement from Logistic Regression to Decision tree is greater than that from Decision tree to Random Forest.
-But before concluding, we need to be sure that the models actually kearned the data, and not just cramming it. To verify that, i used a *5-fold stratified cross-validation of the Random Forest using macro F1*. This ecentailly means that, i will split the training data into 5groups while maintaining the proportions of each class, train the random forest 5 different times, testing each group different times and evaluating how well the model did each time using macro F1.
+I then tried to improve the Random Forest using `GridSearchCV`.
 
-and the result was this: 
-*Cross-validated F1 scores: [0.96496918 0.96864517 0.96092697 0.96706669 0.96592037]*
-*Mean F1 score: 0.9655056750707878*
-
-
-The mean value of the cross validated f1 score is very close to the actual F1 score of the model, which proves that the Random Forest model is really predicting attack types without cramming or halucinating.
-
-The dataset is heavily imbalanced and majority classes dominate on minorities such as:
-
-Metasploit_Brute_Force_SSH *>>>* only 7 test samples
-NMAP_FIN_SCAN *>>>* only 6 test samples
-Wipro_bulb *>>>* 51 test samples
-DDOS_Slowloris *>>>* 107 test samples
-
-May class weighting will improve minority-class performance. So I tried a class-balanced random-forest to compare the result.
-The Class-Balanced random-forest gave the following results:
-
-Random Forest Results:
-Accuracy: 0.9983349577647823
-F1 Score: 0.9745608400468327
-Classification Report:
-                            precision    recall  f1-score   support
-
-            ARP_poisioning       0.99      0.99      0.99      1550
-            DDOS_Slowloris       1.00      0.96      0.98       107
-             DOS_SYN_Hping       1.00      1.00      1.00     18932
-              MQTT_Publish       1.00      1.00      1.00       829
-Metasploit_Brute_Force_SSH       0.78      1.00      0.88         7
-             NMAP_FIN_SCAN       1.00      0.83      0.91         6
-         NMAP_OS_DETECTION       1.00      1.00      1.00       400
-             NMAP_TCP_scan       1.00      1.00      1.00       200
-             NMAP_UDP_SCAN       0.99      0.99      0.99       518
-       NMAP_XMAS_TREE_SCAN       1.00      1.00      1.00       402
-               Thing_Speak       0.99      0.99      0.99      1622
-                Wipro_bulb       0.98      0.94      0.96        51
-
-                  accuracy                           1.00     24624
-                 macro avg       0.98      0.98      0.97     24624
-              weighted avg       1.00      1.00      1.00     24624
-
-Confusion Matrix:
-[[ 1539     0     0     0     1     0     0     0     0     0    10     0]
- [    0   103     0     0     0     0     0     0     4     0     0     0]
- [    0     0 18932     0     0     0     0     0     0     0     0     0]
- [    2     0     0   827     0     0     0     0     0     0     0     0]
- [    0     0     0     0     7     0     0     0     0     0     0     0]
- [    0     0     0     0     0     5     0     0     0     0     1     0]
- [    0     0     0     0     0     0   400     0     0     0     0     0]
- [    0     0     0     0     0     0     0   200     0     0     0     0]
- [    2     0     0     0     1     0     0     0   515     0     0     0]
- [    2     0     0     0     0     0     0     0     0   400     0     0]
- [   13     0     0     0     0     0     0     0     1     0  1607     1]
- [    1     0     0     1     0     0     0     0     0     0     1    48]]
-
-
-Class weighting did not meaningfully improve your overall macro F1. It slightly reduced accuracy:from 99.85% to 99.83% 
-And the minority-class results changed only slightly.
-
-the Recall and F1 scores of DDOS_Slowloris, Wipro_bulb, NMAP_FIN_SCAN instead got slightly worse. But they occupy a very tiny portion of the dataset. For this Random Forest configuration and this dataset split, class weighting does not provide a meaningful improvement.
-
-At the end i decided o=to go with the Random forest model and proceed with hyperparameter tuning.
-
-**HYPERPARAMETER TUNNING**
-
-I will use GridSearchCV to test several Random Forest configurations automatically and select the one with the best macro F1.
- I used the following parameter grid:
-
-  param_grid = {
+For the final tuning experiment, I tested:
+________________________________________________________-
+param_grid = {
     'n_estimators': [100, 200],
-    'max_depth': [None, 20, 40],
-    'min_samples_split': [2, 5],
-    'min_samples_leaf': [1, 2]
+    'max_depth': [None, 20]
 }
 
-which contains 24 different configurations.
+I used Macro F1 as the scoring metric because of the class imbalance.
 
+rf_for_tuning = RandomForestClassifier(
+    random_state=42,
+    n_jobs=-1
+)
+
+grid_search = GridSearchCV(
+    estimator=rf_for_tuning,
+    param_grid=param_grid,
+    scoring='f1_macro',
+    cv=cv,
+    n_jobs=-1,
+    verbose=2
+)
+
+grid_search.fit(trainX, trainY)
+
+The best parameters were:
+
+n_estimators = 200
+max_depth = 20
+______________________________________________________________
+The best cross-validation Macro F1 was approximately: 0.9645
+
+The improvement from tuning was relatively small, which is not surprising because the baseline Random Forest was already performing very well.
+
+---
+
+# 17. Final Model
+
+The final model was the tuned Random Forest:
+
+Random Forest
+n_estimators = 200
+max_depth = 20
+random_state = 42
+
+Its final test results were:
+
+* Accuracy: 99.85%
+* Macro F1: 0.976
+* Weighted F1: 0.998
+
+The classification report showed very strong performance across most classes.
+
+The most difficult classes were still mainly the classes with fewer examples.
+
+For example:
+
+| Class                      |   F1 |
+| -------------------------- | ---: |
+| ARP_poisioning             | 0.99 |
+| DDOS_Slowloris             | 1.00 |
+| DOS_SYN_Hping              | 1.00 |
+| MQTT_Publish               | 1.00 |
+| Metasploit_Brute_Force_SSH | 0.88 |
+| NMAP_FIN_SCAN              | 0.91 |
+| NMAP_OS_DETECTION          | 1.00 |
+| NMAP_TCP_scan              | 1.00 |
+| NMAP_UDP_SCAN              | 1.00 |
+| NMAP_XMAS_TREE_SCAN        | 1.00 |
+| Thing_Speak                | 0.99 |
+| Wipro_bulb                 | 0.96 |
+
+The overall performance was very high, but the results for classes with only a few test examples should be interpreted carefully.
+
+---
+
+# 18. Confusion Matrix
+
+I also generated a confusion matrix for the final Random Forest.
+
+The confusion matrix showed that most observations were correctly classified.
+
+Most of the remaining errors involved classes that were relatively similar in their network characteristics.
+
+For example, some `Thing_Speak` observations were classified as `ARP_poisioning`, while some `Wipro_bulb` observations were classified as other traffic categories.
+
+Overall, there were very few misclassifications compared with the total number of test observations.
+
+---
+
+# 19. Feature Importance
+
+After training the final Random Forest, I examined its feature importance values.
+
+The most important features included:
+
+| Feature                | Importance |
+| ---------------------- | ---------: |
+| `fwd_pkts_payload.avg` |     0.0789 |
+| `id.resp_p`            |     0.0742 |
+| `fwd_pkts_payload.min` |     0.0560 |
+| `fwd_subflow_bytes`    |     0.0485 |
+| `fwd_pkts_payload.max` |     0.0468 |
+| `fwd_pkts_payload.tot` |     0.0404 |
+| `service_-`            |     0.0337 |
+| `active.avg`           |     0.0309 |
+| `flow_duration`        |     0.0290 |
+| `flow_iat.min`         |     0.0259 |
+
+Other important features included flow inter-arrival times, payload statistics and activity measurements.
+
+This suggests that characteristics such as packet payloads, destination ports, flow duration, timing and network service information were important for the Random Forest's decisions.
+
+These feature importance values show which features were useful for the tree splits; they do not mean that the features directly cause a particular attack category.
+
+---
+
+# 20. Saving the Model
+
+Once I had selected the final model, I saved it using `joblib`:
+_______________________________________
+joblib.dump(
+    best_rf,
+    'random_forest_attack_predictor.pkl'
+)
+_____________________________________
+
+
+This means I do not need to retrain the Random Forest every time I want to use it.Later, I can load the saved model with:
+
+____________________________________________-
+model = joblib.load(
+    'random_forest_attack_predictor.pkl'
+)
+________________________________________________
+
+The new data would still need to go through the same preprocessing steps used during training before being passed to the model.
+
+---------------------------------------------------
+
+# 21. Duplicate Check
+I also checked whether the original dataset contained duplicate rows:
+print("Duplicate rows:", data.duplicated().sum())
+
+Result: 0
+
+This check is important because if identical observations occur in both the training and testing sets, the model may appear to perform better than it would on genuinely new traffic.
+
+---
+
+# 22. Final Model Comparison
+
+My overall model progression was:
+
+| Model               |   Accuracy |  Macro F1 |
+| -------------- ---  | ---------: | --------: |
+| Logistic Regression |     99.14% |     0.920 |
+| Decision Tree       |      99.79% |     0.969 |
+| Random Forest       |     99.85% |     0.977 |
+| Tuned Random Forest | 99.85%    | 0.976 |
+
+The tuning did not produce a major improvement over the original Random Forest.
+
+This was useful because it showed me that more tuning does not automatically mean a much better model. The original Random Forest was already very strong.
+
+---------------------------------------
+
+# 23. Limitations
+There are several limitations to this project.
+
+## 1. Strong class imbalance
+`DOS_SYN_Hping` makes up around 77% of the dataset.
+This is why I focused on Macro F1 instead of relying only on accuracy.
+
+## 2. Very small classes
+Some classes have extremely few observations. For example, the final test set contained only:
+
+* 7 `Metasploit_Brute_Force_SSH`
+* 6 `NMAP_FIN_SCAN`
+
+It is difficult to make strong conclusions about model performance on these classes with such small samples.
+
+## 3. Random train/test split
+The model was evaluated using a random stratified split.
+In a real network environment, traffic could come from completely different devices, networks or time periods. A future version of the project could test the model on a more genuinely unseen source of traffic.
+
+## 4. Test-set model selection
+I experimented with more than one hyperparameter grid and compared their final test results. Strictly speaking, the test set should ideally be used only once for the final evaluation.
+
+A better future approach would be to choose the model entirely using cross-validation and then evaluate it once on the untouched test set.
+
+## 5. Preprocessing could be made more rigorous
+
+I performed one-hot encoding before the train/test split. This did not use the target variable, so it is not target leakage, but a more rigorous implementation would fit the preprocessing steps only on the training data and then apply them to the test data.
+
+----------------------------------------
+
+# 24. Conclusion
+In this project, I built a machine learning system for classifying IoT network traffic using the RT-IoT2022 dataset.
+
+I started by exploring the data, checking missing values, investigating class imbalance and examining the relationships between network features and the target.
+
+I compared three models:
+* Logistic Regression
+* Decision Tree
+* Random Forest
+
+Random Forest performed the best. I then tested class weighting and hyperparameter tuning, but these only produced small changes.
+
+The final tuned Random Forest achieved approximately:
+
+99.85% accuracy
+0.976 Macro F1
+0.998 Weighted F1
+
+The model performed very well across most of the traffic categories. However, the results for the rarest classes need to be interpreted carefully because there are very few examples of them.
+
+I also examined feature importance and found that payload statistics, destination port, flow timing, activity and service information were among the most important features.
+
+Overall, this project helped me understand the complete machine learning workflow, from data exploration and preprocessing to model comparison, evaluation, tuning and saving a model for future use.
